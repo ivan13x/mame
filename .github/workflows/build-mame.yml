@@ -1,0 +1,62 @@
+name: Build Custom MAME Android Core
+
+on:
+  workflow_dispatch: # Allows you to manually trigger the build from the GitHub Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-2204
+    
+    steps:
+    - name: Checkout libretro/mame
+      uses: actions/checkout@v4
+      with:
+        repository: 'libretro/mame'
+        fetch-depth: 1
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential ccache libasound2-dev libpulse-dev
+
+    - name: Setup Android NDK
+      uses: android-actions/setup-android@v3
+      # This action installs the Android SDK tools. 
+      # We will use the default NDK available on the GitHub runner or install a specific one.
+
+    - name: Modify CPS1 source constants
+      run: |
+        FILE_PATH="src/mame/capcom/cps1.h"
+        
+        echo "=== Before modification ==="
+        sed -n '40,45p' "$FILE_PATH"
+        
+        # Replace the target lines exactly as requested
+        sed -i 's/#define CPS_HBEND\s*(64)/#define CPS_HBEND        (8)/g' "$FILE_PATH"
+        sed -i 's/#define CPS_HBSTART\s*(448)/#define CPS_HBSTART      (504)/g' "$FILE_PATH"
+        
+        echo "=== After modification ==="
+        sed -n '40,45p' "$FILE_PATH"
+
+    - name: Build MAME Libretro Core
+      run: |
+        # Locate the default Android NDK installed on the runner
+        export ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME
+        echo "Using NDK path: $ANDROID_NDK_HOME"
+        
+        # Build command using the specific flags matching your makefile snippet
+        # MAME builds are heavy; using -j$(nproc) ensures it uses all available cores.
+        make CONFIG=libretro OSD=retro platform=android-arm64 -j$(nproc)
+
+    - name: Upload Core Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mame_libretro_android_arm64
+        path: |
+          *.so
+          backends/*.so
